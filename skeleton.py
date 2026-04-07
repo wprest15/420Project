@@ -5,7 +5,25 @@ def load_data(path):
     #returns X,y:
         # X = feature matrix
         # y = fraud labels
-    pass
+    import pandas as pd
+    from sklearn.preprocessing import StandardScaler
+
+    df = pd.read_csv(path)
+
+    # Drop rows missing the label
+    df = df.dropna(subset=['fraud_label'])
+
+    y = df['fraud_label'].astype(int).values
+
+    # Drop label and any non-numeric/id columns
+    X_df = df.drop(columns=['fraud_label'])
+    X_df = X_df.select_dtypes(include='number')
+    X_df = X_df.fillna(X_df.median())
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X_df)
+
+    return X, y
 
 # Individual Representation
 def create_hypothesis(feature_space):
