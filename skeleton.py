@@ -31,15 +31,37 @@ def create_hypothesis(feature_space):
     Select subset and assign conditions
         Example: revenue_growth > threshold
 
-    Returns individual
+    Returns individual: list of conditions, each a dict:
+        {'feature': int index, 'op': '>' or '<', 'threshold': float}
     """
-    pass
+    import random
+
+    n_conditions = random.randint(1, max(1, len(feature_space) // 2))
+    selected = random.sample(range(len(feature_space)), n_conditions)
+
+    individual = []
+    for feat_idx in selected:
+        individual.append({
+            'feature': feat_idx,
+            'op': random.choice(['>', '<']),
+            'threshold': round(random.uniform(-2.0, 2.0), 4)  # scaled data is ~N(0,1)
+        })
+    return individual
 
 def apply_hypothesis(individual, X):
-    # Apply fraud hypo to data
+    # Apply fraud hypo to data — all conditions must hold (AND logic)
 
-    # Returns predictions or scores
-    pass
+    # Returns binary predictions array (1 = flagged as fraud)
+    import numpy as np
+
+    mask = np.ones(len(X), dtype=bool)
+    for cond in individual:
+        col = X[:, cond['feature']]
+        if cond['op'] == '>':
+            mask &= col > cond['threshold']
+        else:
+            mask &= col < cond['threshold']
+    return mask.astype(int)
 
 # Population Management
 def initialize_population(pop_size, feature_space):
