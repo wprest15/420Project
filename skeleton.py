@@ -36,7 +36,7 @@ def create_hypothesis(feature_space):
     """
     import random
 
-    n_conditions = random.randint(1, max(1, len(feature_space) // 2))
+    n_conditions = random.randint(1, 3) # 1 to 3 conditions
     selected = random.sample(range(len(feature_space)), n_conditions)
 
     individual = []
@@ -66,27 +66,52 @@ def apply_hypothesis(individual, X):
 # Population Management
 def initialize_population(pop_size, feature_space):
     # Return list of individuals
-    pass
+    return [create_hypothesis(feature_space) for i in range(pop_size)]
 
 # Clustering
 def calc_hypo_representation(individual, X):
+    import numpy as np
     # Convert individual into vector for clustering
-
+    n_features = X.shape[1]
+    ind_vector = np.zeros(n_features * 3)  # feature, op, threshold for each feature
+    for cond in individual:
+        idx = cond['feature'] * 3
+        ind_vector[idx] = 1  # feature used
+        ind_vector[idx + 1] = 1 if cond['op'] == '>' else 0  # op
+        ind_vector[idx + 2] = cond['threshold']  # threshold
     # Returns vector representation
-    pass
+    return ind_vector
 
 def cluster_hypo(population, X, k):
     # Apply k-means clustering to group indivs by similarity
+    import numpy as np
+    from sklearn.cluster import KMeans
 
+    if len(population) == 0:
+        return {}
+    representations = np.array([calc_hypo_representation(ind, X) for ind in population])
+
+    k = min(k, len(population))  # can't have more clusters than individuals
+
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(representations)
     # Returns clusters dict
-    pass
+    clusters = {}
+    for idx, label in enumerate(labels):
+        if label not in clusters:
+            clusters[label] = []
+        clusters[label].append(idx)
+    return clusters
 
 # ElasticNet Regression
 def train_regression(X, y):
     # Train ElasticNet, tune hyperparameters, use CV
-
+    import numpy as np
+    from sklearn.linear_model import ElasticNetCV
+    model = ElasticNetCV(cv=5, random_state=42)
+    model.fit(X, y)
     # Returns trained model
-    pass
+    return model
 
 def predict_risk(model, X):
     # Generate fraud risk scores using ElasticNet
