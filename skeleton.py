@@ -115,50 +115,206 @@ def train_regression(X, y):
 
 def predict_risk(model, X):
     # Generate fraud risk scores using ElasticNet
-
-    # Returns risk scores
-    pass
+    return model.predict(X)
 
 # Fitness
 def evaluate_hypo(individual, model, X, y):
-    # Compute fitness of hypothesis and return score
-    pass
+    import numpy as np
+    from sklearn.metrics import precision_score, recall_score
+
+    predictions = apply_hypothesis(individual, X)
+    n_flagged = predictions.sum()
+    coverage = n_flagged / len(predictions)
+
+    # Degenerate rules get zero fitness
+    if n_flagged == 0 or n_flagged == len(predictions):
+        return 0.0
+
+    precision = precision_score(y, predictions, zero_division=0)
+    recall = recall_score(y, predictions, zero_division=0)
+
+    # Fraction of true frauds captured by flagged rows
+    total_fraud = y.sum()
+    fraud_captured = y[predictions == 1].sum()
+    topk_capture = fraud_captured / total_fraud if total_fraud > 0 else 0.0
+
+    # Reward agreement with ElasticNet: flagged rows should have higher risk scores
+    risk_scores = predict_risk(model, X)
+    mean_risk_flagged = risk_scores[predictions == 1].mean()
+    mean_risk_unflagged = risk_scores[predictions == 0].mean()
+    risk_agreement = max(0.0, mean_risk_flagged - mean_risk_unflagged)
+
+    # Simplicity penalty: 0 for 1 condition, grows with more
+    simplicity_penalty = 0.05 * (len(individual) - 1)
+
+    # Coverage penalty: rules that flag almost nothing or almost everything
+    if coverage < 0.01 or coverage > 0.5:
+        coverage_penalty = 0.2
+    else:
+        coverage_penalty = 0.0
+
+    fitness = (0.35 * recall
+               + 0.25 * precision
+               + 0.25 * topk_capture
+               + 0.15 * min(risk_agreement, 1.0)
+               - simplicity_penalty
+               - coverage_penalty)
+    return max(0.0, fitness)
 
 def evaluate_pop(population, model, X, y):
-    # evalute all indivs
-    # return list of (individual, fitness)
-    pass
+    # Returns dict mapping population index -> fitness
+    fitness_dict = {}
+    for i, individual in enumerate(population):
+        fitness_dict[i] = evaluate_hypo(individual, model, X, y)
+    return fitness_dict
 
 # Selection
 def tourn_sel(cluster, fitness_dict, tournament_size):
-    # Tourn select within cluster
-
-    # Return selected individuals
-    pass
+    import random
+    # cluster is a list of population indices
+    size = min(tournament_size, len(cluster))
+    contestants = random.sample(cluster, size)
+    return max(contestants, key=lambda idx: fitness_dict[idx])
 
 def select_pop(clusters, fitness_dict, tournament_size):
-    # Select individuals across all clusters
-
-    # Returns selected inds for reproduction
-    pass
+    # Run tournament selection in each cluster, return list of winning indices
+    selected = []
+    for cluster in clusters.values():
+        if len(cluster) > 0:
+            winner = tourn_sel(cluster, fitness_dict, tournament_size)
+            selected.append(winner)
+    return selected
 
 # Genetic Variation
 def crossover(p1, p2):
-    # Combine two hypothesis
+    import random
+    import copy
 
-    # Return child
-    pass
+    # Merge conditions, deduplicate by feature, then sample 1-3
+    combined = list(p1) + list(p2)
+    seen = set()
+    unique = []
+    for cond in combined:
+        if cond['feature'] not in seen:
+            seen.add(cond['feature'])
+            unique.append(cond)
+
+    random.shuffle(unique)
+    n = random.randint(1, min(3, len(unique)))
+    return [copy.deepcopy(c) for c in unique[:n]]
 
 def mutate(individual, feature_space, mutation_rate):
-    # Mutate hypothesis
+    import random
+    import copy
 
-    # Return mutated ind
-    pass
+    if random.random() > mutation_rate:
+        return individual
+
+    ind = copy.deepcopy(individual)
+    actions = ['change_feature', 'perturb_threshold', 'flip_op']
+    if len(ind) < 3:
+        actions.append('add_condition')
+    if len(ind) > 1:
+        actions.append('remove_condition')
+
+    action = random.choice(actions)
+
+    if action == 'change_feature':
+        cond = random.choice(ind)
+        cond['feature'] = random.randint(0, len(feature_space) - 1)
+    elif action == 'perturb_threshold':
+        cond = random.choice(ind)
+        cond['threshold'] = round(cond['threshold'] + random.gauss(0, 0.3), 4)
+    elif action == 'flip_op':
+        cond = random.choice(ind)
+        cond['op'] = '<' if cond['op'] == '>' else '>'
+    elif action == 'add_condition':
+        ind.append({
+            'feature': random.randint(0, len(feature_space) - 1),
+            'op': random.choice(['>', '<']),
+            'threshold': round(random.uniform(-2.0, 2.0), 4)
+        })
+    elif action == 'remove_condition':
+        ind.pop(random.randint(0, len(ind) - 1))
+
+    return ind
 
 # Evolution
-def evolve(X, y, feature_space, pop_size, generations, k_clusters):
-    # Return final population and best individuals
-    pass
+def evolve(X, y, feature_space, pop_size, generations, k_clusters,
+           mutation_rate=0.3, tournament_size=3, n_elites=None,
+           patience=10):
+    import random
+    import copy
+
+    n_elites = n_elites if n_elites is not None else max(1, pop_size // 10)
+
+    model = train_regression(X, y)
+    population = initialize_population(pop_size, feature_space)
+
+    best_fitness_history = []
+    avg_fitness_history = []
+    overall_best = None
+    overall_best_fitness = -1.0
+    no_improve_count = 0
+
+    for gen in range(generations):
+        fitness_dict = evaluate_pop(population, model, X, y)
+        fitnesses = list(fitness_dict.values())
+
+        gen_best_idx = max(fitness_dict, key=fitness_dict.get)
+        gen_best_fitness = fitness_dict[gen_best_idx]
+        gen_avg_fitness = sum(fitnesses) / len(fitnesses)
+        best_fitness_history.append(gen_best_fitness)
+        avg_fitness_history.append(gen_avg_fitness)
+
+        if gen_best_fitness > overall_best_fitness:
+            overall_best_fitness = gen_best_fitness
+            overall_best = copy.deepcopy(population[gen_best_idx])
+            no_improve_count = 0
+        else:
+            no_improve_count += 1
+
+        print(f"Gen {gen+1}/{generations} | best={gen_best_fitness:.4f} avg={gen_avg_fitness:.4f}")
+
+        # Early stopping
+        if no_improve_count >= patience:
+            print(f"  No improvement for {patience} generations, stopping early.")
+            break
+
+        # Elitism: carry top individuals directly to next generation
+        sorted_indices = sorted(fitness_dict, key=fitness_dict.get, reverse=True)
+        elites = [copy.deepcopy(population[i]) for i in sorted_indices[:n_elites]]
+
+        # Cluster and select parents
+        clusters = cluster_hypo(population, X, k_clusters)
+        parent_indices = select_pop(clusters, fitness_dict, tournament_size)
+        parents = [population[i] for i in parent_indices]
+
+        # Fill next generation with crossover + mutation offspring
+        new_population = elites[:]
+        while len(new_population) < pop_size:
+            if len(parents) >= 2:
+                p1, p2 = random.sample(parents, 2)
+            else:
+                p1 = p2 = parents[0]
+            child = crossover(p1, p2)
+            child = mutate(child, feature_space, mutation_rate)
+            new_population.append(child)
+
+        population = new_population[:pop_size]
+
+    # Final evaluation on last generation
+    fitness_dict = evaluate_pop(population, model, X, y)
+
+    return {
+        'population': population,
+        'fitness_dict': fitness_dict,
+        'model': model,
+        'best_individual': overall_best,
+        'best_fitness': overall_best_fitness,
+        'best_fitness_history': best_fitness_history,
+        'avg_fitness_history': avg_fitness_history,
+    }
 
 # Output
 def get_top_hypo(population, fitness_dict, top_k):
