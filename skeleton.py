@@ -1,3 +1,13 @@
+import argparse
+import copy
+import random
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.linear_model import ElasticNetCV
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.preprocessing import StandardScaler
+
 # Data Layer
 def load_data(path):
     # Inputs account-level data. Scale and filter
@@ -5,25 +15,41 @@ def load_data(path):
     #returns X,y:
         # X = feature matrix
         # y = fraud labels
-    import pandas as pd
-    from sklearn.preprocessing import StandardScaler
 
     df = pd.read_csv(path)
 
     # Drop rows missing the label
     df = df.dropna(subset=['fraud_label'])
-
     y = df['fraud_label'].astype(int).values
 
     # Drop label and any non-numeric/id columns
     X_df = df.drop(columns=['fraud_label'])
     X_df = X_df.select_dtypes(include='number')
-    X_df = X_df.fillna(X_df.median())
+
+    medians = X_df.median()
+    X_df = X_df.fillna(medians)
 
     scaler = StandardScaler()
     X = scaler.fit_transform(X_df)
 
-    return X, y
+    feature_names = list(X_df.columns)
+
+    return X, y, scaler, feature_names, medians
+
+def preprocess_new_data(df, scaler, feature_names, medians):
+    # Preprocess new data using same steps as training data
+    X_df = df.copy()
+    X_df = X_df.select_dtypes(include='number')
+
+    for col in feature_names:
+        if col not in X_df.columns:
+            X_df[col] = medians[col]
+
+    X_df = X_df[feature_names].copy()
+    X_df = X_df.fillna(medians)
+
+    X_new = scaler.transform(X_df)
+    return X_new
 
 # Individual Representation
 def create_hypothesis(feature_space):
@@ -34,10 +60,8 @@ def create_hypothesis(feature_space):
     Returns individual: list of conditions, each a dict:
         {'feature': int index, 'op': '>' or '<', 'threshold': float}
     """
-    import random
-
     n_conditions = random.randint(1, 3) # 1 to 3 conditions
-    selected = random.sample(range(len(feature_space)), n_conditions)
+    selected = random.sample(list(feature_space), n_conditions)
 
     individual = []
     for feat_idx in selected:
@@ -50,10 +74,7 @@ def create_hypothesis(feature_space):
 
 def apply_hypothesis(individual, X):
     # Apply fraud hypo to data — all conditions must hold (AND logic)
-
     # Returns binary predictions array (1 = flagged as fraud)
-    import numpy as np
-
     mask = np.ones(len(X), dtype=bool)
     for cond in individual:
         col = X[:, cond['feature']]
@@ -70,7 +91,6 @@ def initialize_population(pop_size, feature_space):
 
 # Clustering
 def calc_hypo_representation(individual, X):
-    import numpy as np
     # Convert individual into vector for clustering
     n_features = X.shape[1]
     ind_vector = np.zeros(n_features * 3)  # feature, op, threshold for each feature
@@ -84,9 +104,6 @@ def calc_hypo_representation(individual, X):
 
 def cluster_hypo(population, X, k):
     # Apply k-means clustering to group indivs by similarity
-    import numpy as np
-    from sklearn.cluster import KMeans
-
     if len(population) == 0:
         return {}
     representations = np.array([calc_hypo_representation(ind, X) for ind in population])
@@ -106,8 +123,6 @@ def cluster_hypo(population, X, k):
 # ElasticNet Regression
 def train_regression(X, y):
     # Train ElasticNet, tune hyperparameters, use CV
-    import numpy as np
-    from sklearn.linear_model import ElasticNetCV
     model = ElasticNetCV(cv=5, random_state=42)
     model.fit(X, y)
     # Returns trained model
@@ -119,9 +134,6 @@ def predict_risk(model, X):
 
 # Fitness
 def evaluate_hypo(individual, model, X, y):
-    import numpy as np
-    from sklearn.metrics import precision_score, recall_score
-
     predictions = apply_hypothesis(individual, X)
     n_flagged = predictions.sum()
     coverage = n_flagged / len(predictions)
@@ -170,7 +182,6 @@ def evaluate_pop(population, model, X, y):
 
 # Selection
 def tourn_sel(cluster, fitness_dict, tournament_size):
-    import random
     # cluster is a list of population indices
     size = min(tournament_size, len(cluster))
     contestants = random.sample(cluster, size)
@@ -187,9 +198,6 @@ def select_pop(clusters, fitness_dict, tournament_size):
 
 # Genetic Variation
 def crossover(p1, p2):
-    import random
-    import copy
-
     # Merge conditions, deduplicate by feature, then sample 1-3
     combined = list(p1) + list(p2)
     seen = set()
@@ -204,9 +212,6 @@ def crossover(p1, p2):
     return [copy.deepcopy(c) for c in unique[:n]]
 
 def mutate(individual, feature_space, mutation_rate):
-    import random
-    import copy
-
     if random.random() > mutation_rate:
         return individual
 
@@ -243,9 +248,6 @@ def mutate(individual, feature_space, mutation_rate):
 def evolve(X, y, feature_space, pop_size, generations, k_clusters,
            mutation_rate=0.3, tournament_size=3, n_elites=None,
            patience=10):
-    import random
-    import copy
-
     n_elites = n_elites if n_elites is not None else max(1, pop_size // 10)
 
     model = train_regression(X, y)
@@ -319,33 +321,83 @@ def evolve(X, y, feature_space, pop_size, generations, k_clusters,
 # Output
 def get_top_hypo(population, fitness_dict, top_k):
     # Select best fraud hypotheses
+    top_k = min(top_k, len(population))
+    sorted_indices = sorted(fitness_dict, key=fitness_dict.get, reverse=True)
 
     # Return list of top hypos
-    pass
+    top_hypos = [population[i] for i in sorted_indices[:top_k]]
+    return top_hypos
 
 def convert_hypo(individual):
     # Convert hypo to string for readability/usability
-    pass
+    substr = []
+    for cond in individual:
+        op = '>' if cond['op'] == '>' else '<'
+        substr.append(f"feature_{cond['feature']} {op} {cond['threshold']}")
+    return " AND ".join(substr)
 
-def score_new_data(hypothesis, X_new):
+def score_new_data(hypothesis, df_new, feature_names, medians, scaler):
     # Apply learned fraud rules to new data
-
+    X_new = preprocess_new_data(df_new, scaler, feature_names, medians)
+    predictions = apply_hypothesis(hypothesis, X_new)
     # Return ranked results
-    pass
+    return predictions
 
 # Accuracy Test
 def eval_performance(y, y_hat):
     # Test if model works
-
+    y = np.asarray(y).astype(int)
+    y_hat = np.asarray(y_hat).astype(int)
     # Return metrics dictionary
-    pass
+    return {
+        'precision': precision_score(y, y_hat, zero_division=0),
+        'recall': recall_score(y, y_hat, zero_division=0),
+        'f1': f1_score(y, y_hat, zero_division=0)
+    }
 
-def get_topk_hit_rate(y, y_hat, k_percent):
+
+def get_topk_hit_rate(y, scores, k_percent):
     # Compute percent of actual fraud captured
+    y = np.asarray(y).astype(int)
+    scores = np.asarray(scores)
 
+    k = int(k_percent * len(y))
     # Returns hit rate
-    pass
+    if k == 0:
+        return 0.0
+    topk_indices = np.argsort(scores)[::-1][:k]
+    total_fraud = y.sum()
+    return y[topk_indices].sum() / total_fraud if total_fraud > 0 else 0.0
 
 def main():
+    parser = argparse.ArgumentParser(description="Evolve fraud detection rules")
+    parser.add_argument('--data_path', type=str, default='account_data.csv')
+    parser.add_argument('--pop_size', type=int, default=100)
+    parser.add_argument('--generations', type=int, default=50)
+    parser.add_argument('--k_clusters', type=int, default=5)
+    parser.add_argument('--mutation_rate', type=float, default=0.3)
+    parser.add_argument('--tournament_size', type=int, default=3)
+    parser.add_argument('--n_elites', type=int, default=None)
+    parser.add_argument('--patience', type=int, default=10)
+    args = parser.parse_args()
 
-    pass
+    X, y, scaler, feature_names, medians = load_data(args.data_path)
+    feature_space = range(X.shape[1])
+
+    results = evolve(
+        X, y,
+        feature_space=feature_space,
+        pop_size=args.pop_size,
+        generations=args.generations,
+        k_clusters=args.k_clusters,
+        mutation_rate=args.mutation_rate,
+        tournament_size=args.tournament_size,
+        n_elites=args.n_elites,
+        patience=args.patience
+    )
+
+    print("Best hypothesis:", convert_hypo(results['best_individual']))
+    return results
+
+if __name__ == "__main__":
+    main()
