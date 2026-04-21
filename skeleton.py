@@ -328,12 +328,13 @@ def get_top_hypo(population, fitness_dict, top_k):
     top_hypos = [population[i] for i in sorted_indices[:top_k]]
     return top_hypos
 
-def convert_hypo(individual):
+def convert_hypo(individual, feature_names=None):
     # Convert hypo to string for readability/usability
     substr = []
     for cond in individual:
+        name = feature_names[cond['feature']] if feature_names else f"feature_{cond['feature']}"
         op = '>' if cond['op'] == '>' else '<'
-        substr.append(f"feature_{cond['feature']} {op} {cond['threshold']}")
+        substr.append(f"{name} {op} {cond['threshold']}")
     return " AND ".join(substr)
 
 def score_new_data(hypothesis, df_new, feature_names, medians, scaler):
@@ -396,7 +397,27 @@ def main():
         patience=args.patience
     )
 
-    print("Best hypothesis:", convert_hypo(results['best_individual']))
+    top_hypos = get_top_hypo(results['population'], results['fitness_dict'], top_k=5)
+    print("\n=== Top Fraud Rules ===")
+    for i, hypo in enumerate(top_hypos):
+        print(f"  Rule {i+1}: {convert_hypo(hypo, feature_names)}")
+
+    # Evaluate best hypothesis performance
+    best = results['best_individual']
+    y_hat = apply_hypothesis(best, X)
+    metrics = eval_performance(y, y_hat)
+    print(f"\n=== Best Rule Performance ===")
+    print(f"  Precision: {metrics['precision']:.4f}")
+    print(f"  Recall:    {metrics['recall']:.4f}")
+    print(f"  F1:        {metrics['f1']:.4f}")
+
+    # Top-k hit rates at 10% and 20%
+    risk_scores = predict_risk(results['model'], X)
+    for k in [0.10, 0.20]:
+        rate = get_topk_hit_rate(y, risk_scores, k)
+        print(f"  Top-{int(k*100)}% hit rate: {rate:.4f}")
+
+    print(f"\nBest fitness: {results['best_fitness']:.4f}")
     return results
 
 if __name__ == "__main__":
