@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EA Fraud Detection Poster (24x36)</title>
+  <style>
+    @page { size: 24in 36in; margin: 0.4in; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f6f8fb;
+      color: #17202a;
+    }
+    .poster {
+      width: 24in;
+      height: 36in;
+      box-sizing: border-box;
+      padding: 0.35in;
+      display: grid;
+      grid-template-rows: auto auto auto auto auto auto;
+      gap: 0.18in;
+      background: white;
+    }
+    h1 {
+      margin: 0;
+      font-size: 64px;
+      color: #0b2e4f;
+      text-align: center;
+      line-height: 1.08;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 28px;
+      color: #284b63;
+      margin-top: 0.05in;
+      margin-bottom: 0.1in;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.2in;
+    }
+    .panel {
+      background: #f7fbff;
+      border: 2px solid #d7e5f2;
+      border-radius: 16px;
+      padding: 0.14in 0.17in;
+    }
+    .panel h2 {
+      margin: 0 0 0.08in 0;
+      font-size: 34px;
+      color: #0b2e4f;
+    }
+    .panel ul {
+      margin: 0;
+      padding-left: 0.22in;
+      font-size: 23px;
+      line-height: 1.28;
+    }
+    .figure-wrap {
+      background: #fff;
+      border: 2px solid #d8dee8;
+      border-radius: 14px;
+      padding: 0.10in;
+    }
+    .figure-title {
+      margin: 0 0 0.06in 0;
+      text-align: center;
+      font-size: 28px;
+      color: #12395c;
+      font-weight: 700;
+    }
+    .figure-img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 10px;
+    }
+    .results-header {
+      text-align: center;
+      font-size: 44px;
+      font-weight: 800;
+      color: #0b2e4f;
+      margin-top: 0.03in;
+      margin-bottom: -0.03in;
+    }
+    .conclusion {
+      background: #f3f8ff;
+      border: 2px solid #cbdcee;
+      border-radius: 16px;
+      padding: 0.15in 0.20in;
+    }
+    .conclusion h2 {
+      margin: 0;
+      font-size: 34px;
+      color: #0b2e4f;
+    }
+    .conclusion ul {
+      margin: 0.07in 0 0 0;
+      padding-left: 0.24in;
+      font-size: 24px;
+      line-height: 1.30;
+    }
+    .footer {
+      text-align: right;
+      font-size: 18px;
+      color: #5b6f82;
+    }
+  </style>
+</head>
+<body>
+  <div class="poster">
+    <header>
+      <h1>Evolutionary Algorithm Fraud Detection:<br/>Interpretable Rule Discovery</h1>
+      <div class="subtitle">CS 420 Project Poster</div>
+    </header>
+
+    <section class="two-col">
+      <div class="panel">
+        <h2>Introduction &amp; Motivation</h2>
+        <ul>
+          <li>Fraud operations need both strong detection and explainable decisions.</li>
+          <li>Black-box models can be accurate but difficult to audit and trust.</li>
+          <li>Goal: evolve human-readable fraud rules that prioritize likely fraud early.</li>
+          <li>Evaluated on Easy Financial, Hard Financial, and Insurance Fraud datasets.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h2>Methods / Approach</h2>
+        <ul>
+          <li>Preprocess data and train ElasticNet as baseline risk scoring model.</li>
+          <li>Represent candidate fraud rules with threshold conditions on features.</li>
+          <li>EA loop: initialize population → fitness evaluation → diversity clustering.</li>
+          <li>Tournament selection + crossover + mutation across generations.</li>
+          <li>Fitness balances precision, recall, and agreement with baseline signal.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="figure-wrap">
+      <div class="figure-title">Pipeline Overview</div>
+      <img class="figure-img" src="results/pipeline_diagram.png" alt="EA pipeline diagram" />
+    </section>
+
+    <section>
+      <div class="results-header">Results</div>
+    </section>
+
+    <section class="figure-wrap">
+      <div class="figure-title">Fitness Progression and Baseline Comparison</div>
+      <img class="figure-img" src="results/exp1_fitness_curves.png" alt="Fitness curves" />
+      <img class="figure-img" src="results/exp2_ea_vs_baseline.png" alt="EA vs baseline metrics" style="margin-top: 0.08in;" />
+    </section>
+
+    <section class="two-col">
+      <div class="figure-wrap">
+        <div class="figure-title">Mutation Sensitivity</div>
+        <img class="figure-img" src="results/exp3_mutation_sensitivity.png" alt="Mutation sensitivity" />
+      </div>
+      <div class="figure-wrap">
+        <div class="figure-title">Top-k Fraud Capture</div>
+        <img class="figure-img" src="results/exp4_topk_hit_rates.png" alt="Top-k hit rates" />
+      </div>
+    </section>
+
+    <section class="conclusion">
+      <h2>Conclusion</h2>
+      <ul>
+        <li>EA-discovered rules captured a large fraction of fraud in top-ranked investigations, often approaching 100% by top-10% to top-20% coverage.</li>
+        <li>Performance was strongest on easier and insurance-style datasets; hard financial data remains the key challenge.</li>
+        <li>Moderate mutation rates (roughly 0.1–0.3) were stable; overly high mutation reduced F1 consistency.</li>
+        <li>Main takeaway: interpretable evolved rules can achieve practical fraud triage performance while remaining auditable.</li>
+        <li>Future work: cost-sensitive objectives, richer rule structures, and drift-aware retraining.</li>
+      </ul>
+      <div class="footer">Print at 100% scale on a 24&quot; × 36&quot; poster.</div>
+    </section>
+  </div>
+</body>
+</html>
